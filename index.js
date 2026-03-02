@@ -5,15 +5,44 @@ const db = require('./firebase');
 const app = express();
 const port = process.env.PORT || 3000;
 
+// Log environment info for debugging
+console.log('Starting server with PORT:', port);
+console.log('Node environment:', process.env.NODE_ENV);
+
 app.use(express.json());
 
-// Enable CORS for all routes
-app.use(cors({
-  origin: ['http://localhost:3000', 'http://localhost:5173', 'http://127.0.0.1:3000', 'http://127.0.0.1:5173'],
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+// Enable CORS for all routes - more permissive for production
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    const allowedOrigins = [
+      'http://localhost:3000',
+      'http://localhost:5173',
+      'http://127.0.0.1:3000',
+      'http://127.0.0.1:5173',
+      // Add your Render frontend URL when deployed
+      process.env.FRONTEND_URL
+    ].filter(Boolean);
+    
+    if (process.env.NODE_ENV === 'production') {
+      // In production, allow the deployed frontend URL
+      return callback(null, true);
+    }
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
-}));
+};
+
+app.use(cors(corsOptions));
 
 const feedbackCollection = db.collection('feedbacks');
 
@@ -164,4 +193,28 @@ app.delete('/feedbacks/:id', async (req, res) => {
 
 app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
+});
+
+// Health check endpoint for Render
+app.get('/health', (req, res) => {
+  res.status(200).json({ 
+    status: 'OK', 
+    timestamp: new Date().toISOString(),
+    port: port 
+  });
+});
+
+// Root endpoint
+app.get('/', (req, res) => {
+  res.json({ 
+    message: 'Feedback API is running',
+    endpoints: {
+      'GET /feedbacks': 'Get all feedbacks',
+      'GET /feedbacks/:id': 'Get specific feedback',
+      'POST /feedbacks': 'Create feedback',
+      'PUT /feedbacks/:id': 'Update feedback',
+      'DELETE /feedbacks/:id': 'Delete feedback',
+      'GET /health': 'Health check'
+    }
+  });
 });
